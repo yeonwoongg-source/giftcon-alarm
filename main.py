@@ -1,10 +1,10 @@
 import streamlit as st
 import datetime
 import json
-from streamlit_js_eval import streamlit_js_eval, set_cookie, get_cookie
+from streamlit_js_eval import streamlit_js_eval
 
 # ---------------------------------------------------------
-# 1. 페이지 설정 및 Custom CSS (남색 배경 및 흰색 라운드 버튼)
+# 1. 페이지 설정 및 Custom CSS
 # ---------------------------------------------------------
 st.set_page_config(
     page_title="기프티콘 알리미",
@@ -15,16 +15,14 @@ st.set_page_config(
 
 st.markdown("""
     <style>
-    /* 구글 폰트 적용 (동글동글한 Gowun Dodum) */
     @import url('https://fonts.googleapis.com/css2?family=Gowun+Dodum&display=swap');
     
     html, body, [class*="css"], .stApp {
         font-family: 'Gowun Dodum', sans-serif !important;
-        background-color: #1b263b !important; /* 남색 배경 */
+        background-color: #1b263b !important;
         color: #FFFFFF !important;
     }
 
-    /* 시작 화면 타이틀 (남색 배경에 동글동글하고 두꺼운 흰색 글씨) */
     .title-text {
         font-size: 2.8rem;
         font-weight: 800;
@@ -35,7 +33,6 @@ st.markdown("""
         letter-spacing: -1px;
     }
 
-    /* 버튼 스타일 (아기자기하고 얇은 느낌의 흰색 버튼) */
     .stButton > button {
         width: 100%;
         background-color: #FFFFFF !important;
@@ -54,7 +51,6 @@ st.markdown("""
         transform: translateY(-2px);
     }
 
-    /* 카드 형태 카드 레이아웃 */
     .gifticon-card {
         background-color: #2b3a55;
         border-radius: 15px;
@@ -67,8 +63,7 @@ st.markdown("""
         border-left: 5px solid #FF6B6B;
     }
 
-    /* 라디오 버튼 및 입력 필드 흰색 텍스트 보장 */
-    label, .stRadio p, .stSelectbox p {
+    label, .stRadio p, .stSelectbox p, .stCheckbox p {
         color: #FFFFFF !important;
         font-size: 1.05rem !important;
     }
@@ -79,9 +74,8 @@ st.markdown("""
 # 2. LocalStorage 연동 및 Session State 초기화
 # ---------------------------------------------------------
 
-# 브라우저의 localStorage에서 기프티콘 데이터와 알림 설정 가져오기
 stored_gifticons = streamlit_js_eval(js_expressions='localStorage.getItem("gifticons")', key='get_gifticons')
-stored_notify_days = streamlit_js_eval(js_expressions='localStorage.getItem("notify_days")', key='get_notify')
+stored_notify_options = streamlit_js_eval(js_expressions='localStorage.getItem("notify_options")', key='get_notify')
 
 if 'gifticons' not in st.session_state:
     if stored_gifticons and stored_gifticons != "null":
@@ -89,23 +83,35 @@ if 'gifticons' not in st.session_state:
     else:
         st.session_state.gifticons = []
 
-if 'notify_days' not in st.session_state:
-    if stored_notify_days and stored_notify_days != "null":
-        st.session_state.notify_days = int(stored_notify_days)
+# 알림 설정을 복수(리스트)로 저장 (기본값: ["일주일 전"])
+if 'notify_options' not in st.session_state:
+    if stored_notify_options and stored_notify_options != "null":
+        st.session_state.notify_options = json.loads(stored_notify_options)
     else:
-        st.session_state.notify_days = 7  # 기본값: 일주일 전 (7일)
+        st.session_state.notify_options = ["일주일 전"]
 
 if 'current_page' not in st.session_state:
     st.session_state.current_page = "start"
 
-# 데이터를 LocalStorage에 저장하는 함수
 def save_to_local_storage():
     data_json = json.dumps(st.session_state.gifticons)
+    notify_json = json.dumps(st.session_state.notify_options)
     streamlit_js_eval(js_expressions=f'localStorage.setItem("gifticons", JSON.dumps({data_json}))')
-    streamlit_js_eval(js_expressions=f'localStorage.setItem("notify_days", {st.session_state.notify_days})')
+    streamlit_js_eval(js_expressions=f'localStorage.setItem("notify_options", JSON.dumps({notify_json}))')
 
 def set_page(page_name):
     st.session_state.current_page = page_name
+
+# 옵션 텍스트를 남은 일수(숫자)로 변환하는 함수
+def get_notify_days(options):
+    days = []
+    if "한 달 전" in options:
+        days.append(30)
+    if "보름 전" in options:
+        days.append(15)
+    if "일주일 전" in options:
+        days.append(7)
+    return days
 
 # ---------------------------------------------------------
 # 3. 화면별 구현
@@ -216,6 +222,8 @@ elif st.session_state.current_page == "list":
 
     st.write("---")
 
+    notify_days_list = get_notify_days(st.session_state.notify_options)
+
     if not display_list:
         st.info("등록된 기프티콘이 없습니다.")
     else:
@@ -223,7 +231,16 @@ elif st.session_state.current_page == "list":
             exp_date = datetime.datetime.strptime(item["expiry"], "%Y-%m-%d").date()
             d_day = (exp_date - today).days
 
-            is_urgent = d_day <= st.session_state.notify_days
+            # 선택한 알림 기간 조건 중 하나라도 충족하는지 체크
+            matched_notifs = []
+            if 30 in notify_days_list and d_day <= 30:
+                matched_notifs.append("한 달 전")
+            if 15 in notify_days_list and d_day <= 15:
+                matched_notifs.append("보름 전")
+            if 7 in notify_days_list and d_day <= 7:
+                matched_notifs.append("일주일 전")
+
+            is_urgent = len(matched_notifs) > 0
             card_class = "gifticon-card urgent" if is_urgent else "gifticon-card"
 
             if d_day > 0:
@@ -243,7 +260,8 @@ elif st.session_state.current_page == "list":
             """, unsafe_allow_html=True)
 
             if is_urgent and d_day >= 0:
-                st.warning(f"⚠️ 설정한 알림 기준({st.session_state.notify_days}일 전)보다 만료가 임박했습니다!")
+                highest_notif = matched_notifs[0] # 가장 넓은 알림 기준
+                st.warning(f"⚠️ 설정된 [{highest_notif}] 알림 기준 범위 내에 있습니다! (만료까지 {d_day}일 남음)")
 
     st.write("")
     if st.button("돌아가기"):
@@ -253,30 +271,40 @@ elif st.session_state.current_page == "list":
 # ===== [알림 설정 화면] =====
 elif st.session_state.current_page == "settings":
     st.markdown("<h2 style='text-align: center; color: white;'>알림 설정</h2>", unsafe_allow_html=True)
+    st.write("<p style='text-align: center; color: #CCCCCC;'>알림을 받고 싶은 시기를 모두 선택해 주세요 (중복 선택 가능).</p>", unsafe_allow_html=True)
     st.write("")
 
+    # 중복 선택을 위한 체크박스 3개 배치
     col1, col2, col3 = st.columns(3)
-
+    
     with col1:
-        if st.button("한 달 전"):
-            st.session_state.notify_days = 30
-            save_to_local_storage()
-            st.success("한 달 전 알림으로 설정되었습니다.")
-
+        check_month = st.checkbox("한 달 전 (30일)", value="한 달 전" in st.session_state.notify_options)
     with col2:
-        if st.button("보름 전"):
-            st.session_state.notify_days = 15
-            save_to_local_storage()
-            st.success("보름 전(15일 전) 알림으로 설정되었습니다.")
-
+        check_half = st.checkbox("보름 전 (15일)", value="보름 전" in st.session_state.notify_options)
     with col3:
-        if st.button("일주일 전"):
-            st.session_state.notify_days = 7
-            save_to_local_storage()
-            st.success("일주일 전 알림으로 설정되었습니다.")
+        check_week = st.checkbox("일주일 전 (7일)", value="일주일 전" in st.session_state.notify_options)
+
+    # 선택된 값 업데이트
+    selected_options = []
+    if check_month:
+        selected_options.append("한 달 전")
+    if check_half:
+        selected_options.append("보름 전")
+    if check_week:
+        selected_options.append("일주일 전")
+
+    st.session_state.notify_options = selected_options
+
+    st.write("")
+    if st.button("설정 저장"):
+        save_to_local_storage()
+        st.success("알림 설정이 저장되었습니다!")
 
     st.write("---")
-    st.info(f"현재 알림 설정: 사용 기간 만료 **{st.session_state.notify_days}일 전** 알림 표시")
+    if selected_options:
+        st.info(f"현재 선택된 알림 시기: **{', '.join(selected_options)}**")
+    else:
+        st.warning("선택된 알림 시기가 없습니다.")
 
     st.write("")
     if st.button("돌아가기"):

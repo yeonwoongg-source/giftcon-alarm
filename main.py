@@ -145,23 +145,36 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 2. LocalStorage 연동 및 Session State 초기화
+# 2. LocalStorage 연동 및 Session State 데이터 복원
 # ---------------------------------------------------------
 
-stored_gifticons = streamlit_js_eval(js_expressions='localStorage.getItem("gifticons")', key='get_gifticons')
-stored_notify_options = streamlit_js_eval(js_expressions='localStorage.getItem("notify_options")', key='get_notify')
+# 브라우저의 localStorage에서 저장된 값을 불러옵니다.
+raw_gifticons = streamlit_js_eval(js_expressions='localStorage.getItem("gifticons")', key='get_gifticons_ls')
+raw_notify = streamlit_js_eval(js_expressions='localStorage.getItem("notify_options")', key='get_notify_ls')
 
-if 'gifticons' not in st.session_state:
-    if stored_gifticons and stored_gifticons != "null":
-        st.session_state.gifticons = json.loads(stored_gifticons)
-    else:
+if 'loaded_from_ls' not in st.session_state:
+    st.session_state.loaded_from_ls = False
+
+# 최초 로드 시 LocalStorage에서 세션 상태로 복원
+if not st.session_state.loaded_from_ls:
+    if raw_gifticons is not None and raw_gifticons != "null":
+        try:
+            st.session_state.gifticons = json.loads(raw_gifticons)
+        except:
+            st.session_state.gifticons = []
+    elif 'gifticons' not in st.session_state:
         st.session_state.gifticons = []
 
-if 'notify_options' not in st.session_state:
-    if stored_notify_options and stored_notify_options != "null":
-        st.session_state.notify_options = json.loads(stored_notify_options)
-    else:
+    if raw_notify is not None and raw_notify != "null":
+        try:
+            st.session_state.notify_options = json.loads(raw_notify)
+        except:
+            st.session_state.notify_options = ["일주일 전"]
+    elif 'notify_options' not in st.session_state:
         st.session_state.notify_options = ["일주일 전"]
+
+    if raw_gifticons is not None or raw_notify is not None:
+        st.session_state.loaded_from_ls = True
 
 if 'current_page' not in st.session_state:
     st.session_state.current_page = "start"
@@ -169,11 +182,14 @@ if 'current_page' not in st.session_state:
 if 'editing_index' not in st.session_state:
     st.session_state.editing_index = None
 
+# 세션 상태의 데이터를 LocalStorage로 저장하는 함수
 def save_to_local_storage():
-    data_json = json.dumps(st.session_state.gifticons)
-    notify_json = json.dumps(st.session_state.notify_options)
-    streamlit_js_eval(js_expressions=f'localStorage.setItem("gifticons", JSON.dumps({data_json}))')
-    streamlit_js_eval(js_expressions=f'localStorage.setItem("notify_options", JSON.dumps({notify_json}))')
+    data_json = json.dumps(st.session_state.gifticons, ensure_ascii=False)
+    notify_json = json.dumps(st.session_state.notify_options, ensure_ascii=False)
+    
+    # JavaScript의 localStorage 저장 명령어 실행
+    streamlit_js_eval(js_expressions=f'localStorage.setItem("gifticons", JSON.stringify({data_json}))', key=f'save_gift_{datetime.datetime.now().timestamp()}')
+    streamlit_js_eval(js_expressions=f'localStorage.setItem("notify_options", JSON.stringify({notify_json}))', key=f'save_notify_{datetime.datetime.now().timestamp()}')
 
 def set_page(page_name):
     st.session_state.current_page = page_name
@@ -274,7 +290,6 @@ elif st.session_state.current_page == "add":
         if not menu.strip():
             st.error("메뉴 이름을 입력해주세요.")
         else:
-            # 가격 검증
             try:
                 price_val = int(price)
                 if price_val < 0:

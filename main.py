@@ -179,16 +179,15 @@ def set_page(page_name):
     st.session_state.current_page = page_name
     st.session_state.editing_index = None
 
-def get_alert_label(d_day, user_options):
-    """
-    남은 일수(d_day)와 유저가 동의한 알림 옵션(user_options)에 맞춰
-    해당하는 라벨("일주일 전", "보름 전", "한 달 전")을 반환합니다.
-    """
-    if 0 <= d_day <= 7 and "일주일 전" in user_options:
+# 남은 일수에 따라 해당 구간의 알림 텍스트 반환
+def get_alert_label(d_day, notify_options):
+    if d_day == 0:
+        return "D-DAY"
+    elif 1 <= d_day <= 7 and "일주일 전" in notify_options:
         return "일주일 전"
-    elif 8 <= d_day <= 15 and "보름 전" in user_options:
+    elif 8 <= d_day <= 15 and "보름 전" in notify_options:
         return "보름 전"
-    elif 16 <= d_day <= 30 and "한 달 전" in user_options:
+    elif 16 <= d_day <= 30 and "한 달 전" in notify_options:
         return "한 달 전"
     return None
 
@@ -217,8 +216,11 @@ if st.session_state.current_page == "start":
         
         items_html = ""
         for item, d_day, label in urgent_items:
-            d_day_str = "오늘 만료!" if d_day == 0 else f"D-{d_day}"
-            items_html += f"<div class='home-alert-item'>• <b>[{item['category']}] {item['menu']}</b> — <span style='color:#FF5252; font-weight:bold;'>{d_day_str}</span></div>"
+            if label == "D-DAY":
+                d_day_str = "오늘 만료!"
+            else:
+                d_day_str = f"D-{d_day}"
+            items_html += f"<div class='home-alert-item'>• <b>[{item['category']}] {item['menu']}</b> — <span style='color:#FF5252; font-weight:bold;'>{d_day_str} ({label})</span></div>"
 
         st.markdown(f"""
             <div class="home-alert-box">
@@ -339,14 +341,14 @@ elif st.session_state.current_page == "list":
             exp_date = datetime.datetime.strptime(item["expiry"], "%Y-%m-%d").date()
             d_day = (exp_date - today).days
 
-            alert_label = get_alert_label(d_day, st.session_state.notify_options)
-            is_urgent = alert_label is not None
+            label = get_alert_label(d_day, st.session_state.notify_options)
+            is_urgent = label is not None
             card_class = "gifticon-card urgent" if is_urgent else "gifticon-card"
 
             if d_day > 0:
                 d_day_html = f"<span class='d-day-badge'>D-{d_day}</span>" if is_urgent else f"<span class='d-day-normal'>D-{d_day}</span>"
             elif d_day == 0:
-                d_day_html = "<span class='d-day-badge'>D-Day!</span>"
+                d_day_html = "<span class='d-day-badge'>D-DAY</span>"
             else:
                 d_day_html = f"<span class='d-day-badge' style='background:#E0E0E0; color:#666;'>만료됨</span>"
 
@@ -363,8 +365,8 @@ elif st.session_state.current_page == "list":
                 </div>
             """, unsafe_allow_html=True)
 
-            if is_urgent:
-                st.warning(f"⏰ [{alert_label}] 알림 기준 범위 내에 있어요! (만료까지 {d_day}일 남음)")
+            if is_urgent and d_day >= 0:
+                st.warning(f"⏰ [{label}] 알림 기준 범위 내에 있어요! (만료까지 {d_day}일 남음)")
 
             col_edit, col_del = st.columns([1, 1])
             with col_edit:
@@ -445,11 +447,11 @@ elif st.session_state.current_page == "settings":
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        check_month = st.checkbox("한 달 전 (16일~30일 전)", value="한 달 전" in st.session_state.notify_options)
+        check_month = st.checkbox("한 달 전 (30일)", value="한 달 전" in st.session_state.notify_options)
     with col2:
-        check_half = st.checkbox("보름 전 (8일~15일 전)", value="보름 전" in st.session_state.notify_options)
+        check_half = st.checkbox("보름 전 (15일)", value="보름 전" in st.session_state.notify_options)
     with col3:
-        check_week = st.checkbox("일주일 전 (0일~7일 전)", value="일주일 전" in st.session_state.notify_options)
+        check_week = st.checkbox("일주일 전 (7일)", value="일주일 전" in st.session_state.notify_options)
 
     selected_options = []
     if check_month:

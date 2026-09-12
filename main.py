@@ -4,7 +4,7 @@ import json
 from streamlit_js_eval import streamlit_js_eval
 
 # ---------------------------------------------------------
-# 1. 페이지 설정 및 깔끔 & 아기자기한 커스텀 CSS
+# 1. 페이지 설정 및 커스텀 CSS
 # ---------------------------------------------------------
 st.set_page_config(
     page_title="기프티콘 알리미",
@@ -30,8 +30,8 @@ st.markdown("""
         font-size: 3rem;
         color: #5C4B43;
         text-align: center;
-        margin-top: 30px;
-        margin-bottom: 25px;
+        margin-top: 25px;
+        margin-bottom: 20px;
         letter-spacing: 1px;
     }
 
@@ -42,6 +42,27 @@ st.markdown("""
         color: #5C4B43;
         text-align: center;
         margin-bottom: 20px;
+    }
+
+    /* 시작 화면 알림 요약 상자 */
+    .home-alert-box {
+        background-color: #FFF2F2;
+        border: 2px solid #FFB3BA;
+        border-radius: 20px;
+        padding: 18px 22px;
+        margin-bottom: 25px;
+        box-shadow: 0px 4px 12px rgba(255, 179, 186, 0.25);
+    }
+    .home-alert-title {
+        font-family: 'Jua', sans-serif;
+        font-size: 1.25rem;
+        color: #FF5252;
+        margin-bottom: 8px;
+    }
+    .home-alert-item {
+        font-size: 0.98rem;
+        color: #5C4B43;
+        margin: 4px 0;
     }
 
     /* 입체적이고 폭신한 라운드 흰색 버튼 */
@@ -117,7 +138,6 @@ st.markdown("""
         border-radius: 12px;
     }
 
-    /* 텍스트 필드 및 라디오 버튼 텍스트 색상 */
     label, p, span, .stRadio p, .stCheckbox p {
         color: #5C4B43 !important;
     }
@@ -172,6 +192,49 @@ def get_notify_days(options):
 # ===== [시작 화면] =====
 if st.session_state.current_page == "start":
     st.markdown("<div class='title-text'>🎁 기프티콘 알리미</div>", unsafe_allow_html=True)
+    
+    # 임박한 기프티콘 감지 로직
+    today = datetime.date.today()
+    notify_days_list = get_notify_days(st.session_state.notify_options)
+    
+    urgent_items = []
+    for item in st.session_state.gifticons:
+        exp_date = datetime.datetime.strptime(item["expiry"], "%Y-%m-%d").date()
+        d_day = (exp_date - today).days
+        
+        # 설정된 알림 범위에 들어오면서 만료되지 않은 항목 추출
+        matched = []
+        if 30 in notify_days_list and d_day <= 30:
+            matched.append("한 달 전")
+        if 15 in notify_days_list and d_day <= 15:
+            matched.append("보름 전")
+        if 7 in notify_days_list and d_day <= 7:
+            matched.append("일주일 전")
+            
+        if len(matched) > 0 and d_day >= 0:
+            urgent_items.append((item, d_day, matched[0]))
+
+    # 시작 화면 알림창 출력 (만료 임박 기프티콘이 있을 경우만 표시)
+    if urgent_items:
+        # D-Day가 가장 적게 남은 순서로 정렬
+        urgent_items.sort(key=lambda x: x[1])
+        
+        items_html = ""
+        for item, d_day, label in urgent_items[:3]:  # 최대 3개까지 미리보기
+            d_day_str = "오늘 만료!" if d_day == 0 else f"D-{d_day}"
+            items_html += f"<div class='home-alert-item'>• <b>[{item['category']}] {item['menu']}</b> — <span style='color:#FF5252; font-weight:bold;'>{d_day_str}</span></div>"
+        
+        more_count = len(urgent_items) - 3
+        if more_count > 0:
+            items_html += f"<div style='font-size:0.85rem; color:#8C7A6B; margin-top:6px;'>외 {more_count}개의 기프티콘 만료가 임박했어요!</div>"
+
+        st.markdown(f"""
+            <div class="home-alert-box">
+                <div class="home-alert-title">⏰ 만료 임박 기프티콘 알림 ({len(urgent_items)}건)</div>
+                {items_html}
+            </div>
+        """, unsafe_allow_html=True)
+
     st.write("")
 
     col1, col2, col3 = st.columns(3)

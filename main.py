@@ -273,24 +273,30 @@ elif st.session_state.current_page == "add":
     if st.button("💾 저장하기"):
         if not menu.strip():
             st.error("메뉴 이름을 입력해주세요.")
-        elif not price.isdigit():
-            st.error("가격은 숫자로만 입력해주세요.")
         else:
+            # 가격 검증
             try:
-                expiry_date = datetime.date(year, month, day)
-                new_item = {
-                    "category": category,
-                    "menu": menu,
-                    "price": int(price),
-                    "expiry": expiry_date.strftime("%Y-%m-%d")
-                }
-                st.session_state.gifticons.append(new_item)
-                save_to_local_storage()
-                st.success("기프티콘이 성공적으로 저장되었습니다! 🎉")
-                set_page("list")
-                st.rerun()
+                price_val = int(price)
+                if price_val < 0:
+                    st.error("가격은 양수로 입력해주세요.")
+                else:
+                    try:
+                        expiry_date = datetime.date(year, month, day)
+                        new_item = {
+                            "category": category,
+                            "menu": menu,
+                            "price": price_val,
+                            "expiry": expiry_date.strftime("%Y-%m-%d")
+                        }
+                        st.session_state.gifticons.append(new_item)
+                        save_to_local_storage()
+                        st.success("기프티콘이 성공적으로 저장되었습니다! 🎉")
+                        set_page("list")
+                        st.rerun()
+                    except ValueError:
+                        st.error("유효하지 않은 날짜입니다. 연/월/일을 다시 확인해주세요.")
             except ValueError:
-                st.error("유효하지 않은 날짜입니다. 연/월/일을 다시 확인해주세요.")
+                st.error("가격은 숫자로만 입력해주세요.")
 
     st.write("")
     if st.button("← 돌아가기"):
@@ -408,23 +414,28 @@ elif st.session_state.current_page == "list":
                         if st.button("💾 수정 완료", key=f"save_edit_{real_idx}"):
                             if not edit_menu.strip():
                                 st.error("메뉴 이름을 입력해주세요.")
-                            elif not str(edit_price).isdigit():
-                                st.error("가격은 숫자로만 입력해주세요.")
                             else:
                                 try:
-                                    new_exp = datetime.date(edit_y, edit_m, edit_d).strftime("%Y-%m-%d")
-                                    st.session_state.gifticons[real_idx] = {
-                                        "category": edit_category,
-                                        "menu": edit_menu,
-                                        "price": int(edit_price),
-                                        "expiry": new_exp
-                                    }
-                                    save_to_local_storage()
-                                    st.session_state.editing_index = None
-                                    st.success("수정되었습니다!")
-                                    st.rerun()
+                                    edit_price_val = int(edit_price)
+                                    if edit_price_val < 0:
+                                        st.error("가격은 양수로 입력해주세요.")
+                                    else:
+                                        try:
+                                            new_exp = datetime.date(edit_y, edit_m, edit_d).strftime("%Y-%m-%d")
+                                            st.session_state.gifticons[real_idx] = {
+                                                "category": edit_category,
+                                                "menu": edit_menu,
+                                                "price": edit_price_val,
+                                                "expiry": new_exp
+                                            }
+                                            save_to_local_storage()
+                                            st.session_state.editing_index = None
+                                            st.success("수정되었습니다!")
+                                            st.rerun()
+                                        except ValueError:
+                                            st.error("유효하지 않은 날짜입니다.")
                                 except ValueError:
-                                    st.error("유효하지 않은 날짜입니다.")
+                                    st.error("가격은 숫자로만 입력해주세요.")
 
                     with col_cancel_edit:
                         if st.button("❌ 취소", key=f"cancel_edit_{real_idx}"):

@@ -1,178 +1,284 @@
-streamlit
-google-genai
-
-gifticon-notifier/
-├── .streamlit/
-│   └── config.toml      # 남색 배경 theme 설정
-├── app.py               # Streamlit 메인 앱 코드
-├── requirements.txt     # 필요 라이브러리 목록
-└── README.md            # 프로젝트 설명서
-
-streamlit>=1.28.0
-streamlit-local-storage>=0.0.1
-
-[theme]
-primaryColor = "#4A90E2"
-backgroundColor = "#1E2A38"       # 남색 배경
-secondaryBackgroundColor = "#2C3E50"
-textColor = "#FFFFFF"            # 흰색 글씨
-font = "sans serif"
-
 import streamlit as st
 import datetime
+import json
+from streamlit_js_eval import streamlit_js_eval, set_cookie, get_cookie
 
-# 페이지 기본 설정
-st.set_page_config(page_title="기프티콘 알리미", page_icon="🎁", layout="centered")
+# ---------------------------------------------------------
+# 1. 페이지 설정 및 Custom CSS (남색 배경 및 흰색 라운드 버튼)
+# ---------------------------------------------------------
+st.set_page_config(
+    page_title="기프티콘 알리미",
+    page_icon="🎁",
+    layout="centered",
+    initial_sidebar_state="collapsed"
+)
 
-# Custom CSS 적용 (동글동글한 흰색 폰트 및 스타일링)
 st.markdown("""
     <style>
+    /* 구글 폰트 적용 (동글동글한 Gowun Dodum) */
     @import url('https://fonts.googleapis.com/css2?family=Gowun+Dodum&display=swap');
     
-    html, body, [class*="css"] {
-        font-family: 'Gowun Dodum', sans-serif;
+    html, body, [class*="css"], .stApp {
+        font-family: 'Gowun Dodum', sans-serif !important;
+        background-color: #1b263b !important; /* 남색 배경 */
+        color: #FFFFFF !important;
     }
-    .main-title {
+
+    /* 시작 화면 타이틀 (남색 배경에 동글동글하고 두꺼운 흰색 글씨) */
+    .title-text {
         font-size: 2.8rem;
-        font-weight: bold;
+        font-weight: 800;
         color: #FFFFFF;
         text-align: center;
-        margin-bottom: 20px;
+        margin-top: 40px;
+        margin-bottom: 40px;
+        letter-spacing: -1px;
     }
-    .stButton>button {
+
+    /* 버튼 스타일 (아기자기하고 얇은 느낌의 흰색 버튼) */
+    .stButton > button {
         width: 100%;
-        border-radius: 20px;
-        background-color: #FFFFFF;
-        color: #1E2A38;
-        font-weight: bold;
-        border: none;
-        padding: 10px 20px;
+        background-color: #FFFFFF !important;
+        color: #1b263b !important;
+        font-size: 1rem !important;
+        font-weight: 500 !important;
+        border-radius: 20px !important;
+        border: none !important;
+        padding: 12px 20px !important;
+        box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.2) !important;
+        transition: all 0.2s ease-in-out !important;
     }
-    .stButton>button:hover {
-        background-color: #F0F0F0;
-        color: #1E2A38;
+
+    .stButton > button:hover {
+        background-color: #F0F4F8 !important;
+        transform: translateY(-2px);
+    }
+
+    /* 카드 형태 카드 레이아웃 */
+    .gifticon-card {
+        background-color: #2b3a55;
+        border-radius: 15px;
+        padding: 18px;
+        margin-bottom: 12px;
+        border-left: 5px solid #4A90E2;
+    }
+
+    .gifticon-card.urgent {
+        border-left: 5px solid #FF6B6B;
+    }
+
+    /* 라디오 버튼 및 입력 필드 흰색 텍스트 보장 */
+    label, .stRadio p, .stSelectbox p {
+        color: #FFFFFF !important;
+        font-size: 1.05rem !important;
     }
     </style>
 """, unsafe_allow_html=True)
 
-# Session State 초기화 (로컬 데이터 유지)
+# ---------------------------------------------------------
+# 2. LocalStorage 연동 및 Session State 초기화
+# ---------------------------------------------------------
+
+# 브라우저의 localStorage에서 기프티콘 데이터와 알림 설정 가져오기
+stored_gifticons = streamlit_js_eval(js_expressions='localStorage.getItem("gifticons")', key='get_gifticons')
+stored_notify_days = streamlit_js_eval(js_expressions='localStorage.getItem("notify_days")', key='get_notify')
+
 if 'gifticons' not in st.session_state:
-    st.session_state.gifticons = []
+    if stored_gifticons and stored_gifticons != "null":
+        st.session_state.gifticons = json.loads(stored_gifticons)
+    else:
+        st.session_state.gifticons = []
+
 if 'notify_days' not in st.session_state:
-    st.session_state.notify_days = 7
-if 'page' not in st.session_state:
-    st.session_state.page = "home"
+    if stored_notify_days and stored_notify_days != "null":
+        st.session_state.notify_days = int(stored_notify_days)
+    else:
+        st.session_state.notify_days = 7  # 기본값: 일주일 전 (7일)
 
-# 네비게이션 함수
-def go_to(page_name):
-    st.session_state.page = page_name
+if 'current_page' not in st.session_state:
+    st.session_state.current_page = "start"
 
-# 1. 시작 화면
-if st.session_state.page == "home":
-    st.markdown("<div class='main-title'>기프티콘 알리미</div>", unsafe_allow_html=True)
+# 데이터를 LocalStorage에 저장하는 함수
+def save_to_local_storage():
+    data_json = json.dumps(st.session_state.gifticons)
+    streamlit_js_eval(js_expressions=f'localStorage.setItem("gifticons", JSON.dumps({data_json}))')
+    streamlit_js_eval(js_expressions=f'localStorage.setItem("notify_days", {st.session_state.notify_days})')
+
+def set_page(page_name):
+    st.session_state.current_page = page_name
+
+# ---------------------------------------------------------
+# 3. 화면별 구현
+# ---------------------------------------------------------
+
+# ===== [시작 화면] =====
+if st.session_state.current_page == "start":
+    st.markdown("<div class='title-text'>기프티콘 알리미</div>", unsafe_allow_html=True)
     st.write("")
-    
+    st.write("")
+
     col1, col2, col3 = st.columns(3)
     with col1:
-        if st.button("➕ 새 기프티콘 추가"):
-            go_to("add")
+        if st.button("새 기프티콘 추가"):
+            set_page("add")
             st.rerun()
     with col2:
-        if st.button("📜 내 기프티콘"):
-            go_to("list")
+        if st.button("내 기프티콘"):
+            set_page("list")
             st.rerun()
     with col3:
-        if st.button("🔔 알림 설정"):
-            go_to("settings")
+        if st.button("알림 설정"):
+            set_page("settings")
             st.rerun()
 
-# 2. 새 기프티콘 추가 화면
-elif st.session_state.page == "add":
-    st.subheader("➕ 새 기프티콘 추가")
+# ===== [새 기프티콘 추가 화면] =====
+elif st.session_state.current_page == "add":
+    st.markdown("<h2 style='text-align: center; color: white;'>새 기프티콘 추가</h2>", unsafe_allow_html=True)
+    st.write("")
+
+    st.write("**종류**")
+    category = st.radio("종류 선택", ["식당", "디저트", "카페", "편의점", "기타"], horizontal=True, label_visibility="collapsed")
     
-    category = st.selectbox("종류", ["식당", "디저트", "카페", "편의점", "기타"])
-    menu = st.text_input("메뉴")
-    price = st.number_input("가격", min_value=0, step=100)
-    expiry_date = st.date_input("사용 기간", min_value=datetime.date.today())
+    st.write("**메뉴**")
+    menu = st.text_input("메뉴 입력", placeholder="메뉴 이름을 입력하세요", label_visibility="collapsed")
     
-    if st.button("저장하기"):
-        if menu:
-            new_item = {
-                "category": category,
-                "menu": menu,
-                "price": price,
-                "expiry": expiry_date
-            }
-            st.session_state.gifticons.append(new_item)
-            st.success("기프티콘이 저장되었습니다!")
-            go_to("list")
-            st.rerun()
+    st.write("**가격**")
+    price = st.text_input("가격 입력", placeholder="예: 5000", label_visibility="collapsed")
+    
+    st.write("**사용 기간**")
+    today = datetime.date.today()
+    col_y, col_m, col_d = st.columns(3)
+    
+    with col_y:
+        year = st.selectbox("연도", list(range(today.year, today.year + 6)), index=0)
+    with col_m:
+        month = st.selectbox("월", list(range(1, 13)), index=today.month - 1)
+    with col_d:
+        day = st.selectbox("일", list(range(1, 32)), index=min(today.day - 1, 30))
+
+    st.write("")
+    if st.button("저장"):
+        if not menu.strip():
+            st.error("메뉴 이름을 입력해주세요.")
+        elif not price.isdigit():
+            st.error("가격은 숫자로만 입력해주세요.")
         else:
-            st.warning("메뉴 이름을 입력해주세요.")
-            
-    if st.button("← 돌아가기"):
-        go_to("home")
+            try:
+                expiry_date = datetime.date(year, month, day)
+                new_item = {
+                    "category": category,
+                    "menu": menu,
+                    "price": int(price),
+                    "expiry": expiry_date.strftime("%Y-%m-%d")
+                }
+                st.session_state.gifticons.append(new_item)
+                save_to_local_storage()
+                st.success("기프티콘이 저장되었습니다!")
+                set_page("list")
+                st.rerun()
+            except ValueError:
+                st.error("유효하지 않은 날짜입니다. 연/월/일을 다시 확인해주세요.")
+
+    st.write("")
+    if st.button("돌아가기"):
+        set_page("start")
         st.rerun()
 
-# 3. 내 기프티콘 화면
-elif st.session_state.page == "list":
-    st.subheader("📜 내 기프티콘 목록")
-    
-    sort_type = st.radio("정렬 방식", ["날짜순", "종류별"], horizontal=True)
-    
-    items = st.session_state.gifticons.copy()
+# ===== [내 기프티콘 화면] =====
+elif st.session_state.current_page == "list":
+    st.markdown("<h2 style='text-align: center; color: white;'>내 기프티콘 목록</h2>", unsafe_allow_html=True)
+    st.write("")
+
+    col_btn1, col_btn2 = st.columns(2)
+    with col_btn1:
+        if st.button("종류별"):
+            st.session_state.filter_mode = "category"
+    with col_btn2:
+        if st.button("날짜순"):
+            st.session_state.filter_mode = "date"
+
+    if 'filter_mode' not in st.session_state:
+        st.session_state.filter_mode = "date"
+
     today = datetime.date.today()
-    
-    if sort_type == "날짜순":
-        items.sort(key=lambda x: x["expiry"])
-    elif sort_type == "종류별":
-        selected_cat = st.selectbox("카테고리 선택", ["식당", "디저트", "카페", "편의점", "기타"])
-        items = [item for item in items if item["category"] == selected_cat]
-        
+    display_list = st.session_state.gifticons.copy()
+
+    # 날짜순 정렬
+    if st.session_state.filter_mode == "date":
+        display_list.sort(key=lambda x: datetime.datetime.strptime(x["expiry"], "%Y-%m-%d").date())
+
+    # 종류별 필터링
+    elif st.session_state.filter_mode == "category":
+        st.write("")
+        st.write("**카테고리 선택**")
+        selected_cat = st.radio("카테고리 선택", ["식당", "디저트", "카페", "편의점", "기타"], horizontal=True, label_visibility="collapsed")
+        display_list = [item for item in display_list if item["category"] == selected_cat]
+
     st.write("---")
-    
-    if not items:
+
+    if not display_list:
         st.info("등록된 기프티콘이 없습니다.")
     else:
-        for idx, item in enumerate(items):
-            d_day = (item["expiry"] - today).days
-            
-            # 알림 조건 체크
-            is_warning = d_day <= st.session_state.notify_days
-            status_text = f"D-{d_day}" if d_day > 0 else "D-Day (오늘 만료)" if d_day == 0 else "만료됨"
-            
-            with st.container():
-                st.write(f"**[{item['category']}] {item['menu']}**")
-                st.write(f"가격: {item['price']:,}원 | 만료일: {item['expiry']} ({status_text})")
-                if is_warning and d_day >= 0:
-                    st.warning(f"⚠️ 만료까지 {d_day}일 남았습니다!")
-                st.write("---")
-                
-    if st.button("← 돌아가기"):
-        go_to("home")
+        for item in display_list:
+            exp_date = datetime.datetime.strptime(item["expiry"], "%Y-%m-%d").date()
+            d_day = (exp_date - today).days
+
+            is_urgent = d_day <= st.session_state.notify_days
+            card_class = "gifticon-card urgent" if is_urgent else "gifticon-card"
+
+            if d_day > 0:
+                d_day_str = f"D-{d_day}"
+            elif d_day == 0:
+                d_day_str = "D-Day (오늘 만료!)"
+            else:
+                d_day_str = f"만료됨 ({abs(d_day)}일 경과)"
+
+            st.markdown(f"""
+                <div class="{card_class}">
+                    <h3 style='margin:0; color:#FFFFFF;'>[{item['category']}] {item['menu']}</h3>
+                    <p style='margin:5px 0 0 0; color:#E0E0E0;'>
+                        <b>가격:</b> {item['price']:,}원 | <b>사용 기간:</b> {item['expiry']} ({d_day_str})
+                    </p>
+                </div>
+            """, unsafe_allow_html=True)
+
+            if is_urgent and d_day >= 0:
+                st.warning(f"⚠️ 설정한 알림 기준({st.session_state.notify_days}일 전)보다 만료가 임박했습니다!")
+
+    st.write("")
+    if st.button("돌아가기"):
+        set_page("start")
         st.rerun()
 
-# 4. 알림 설정 화면
-elif st.session_state.page == "settings":
-    st.subheader("🔔 알림 설정")
-    st.write("사용 기간이 얼마나 남았을 때 경고 표시를 할지 설정하세요.")
-    
+# ===== [알림 설정 화면] =====
+elif st.session_state.current_page == "settings":
+    st.markdown("<h2 style='text-align: center; color: white;'>알림 설정</h2>", unsafe_allow_html=True)
+    st.write("")
+
     col1, col2, col3 = st.columns(3)
+
     with col1:
-        if st.button("한 달 전 (30일)"):
+        if st.button("한 달 전"):
             st.session_state.notify_days = 30
-            st.success("알림 기준이 30일 전으로 설정되었습니다.")
+            save_to_local_storage()
+            st.success("한 달 전 알림으로 설정되었습니다.")
+
     with col2:
-        if st.button("보름 전 (15일)"):
+        if st.button("보름 전"):
             st.session_state.notify_days = 15
-            st.success("알림 기준이 15일 전으로 설정되었습니다.")
+            save_to_local_storage()
+            st.success("보름 전(15일 전) 알림으로 설정되었습니다.")
+
     with col3:
-        if st.button("일주일 전 (7일)"):
+        if st.button("일주일 전"):
             st.session_state.notify_days = 7
-            st.success("알림 기준이 7일 전으로 설정되었습니다.")
-            
-    st.info(f"현재 설정: 만료 **{st.session_state.notify_days}일 전** 알림")
-    
-    if st.button("← 돌아가기"):
-        go_to("home")
+            save_to_local_storage()
+            st.success("일주일 전 알림으로 설정되었습니다.")
+
+    st.write("---")
+    st.info(f"현재 알림 설정: 사용 기간 만료 **{st.session_state.notify_days}일 전** 알림 표시")
+
+    st.write("")
+    if st.button("돌아가기"):
+        set_page("start")
         st.rerun()

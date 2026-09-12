@@ -216,18 +216,14 @@ if st.session_state.current_page == "start":
         if len(matched) > 0 and d_day >= 0:
             urgent_items.append((item, d_day))
 
-    # 시작 화면 알림창
+    # 시작 화면 알림창 (알림 대상 항목 전체 출력)
     if urgent_items:
         urgent_items.sort(key=lambda x: x[1])
         
         items_html = ""
-        for item, d_day in urgent_items[:3]:
+        for item, d_day in urgent_items:
             d_day_str = "오늘 만료!" if d_day == 0 else f"D-{d_day}"
             items_html += f"<div class='home-alert-item'>• <b>[{item['category']}] {item['menu']}</b> — <span style='color:#FF5252; font-weight:bold;'>{d_day_str}</span></div>"
-        
-        more_count = len(urgent_items) - 3
-        if more_count > 0:
-            items_html += f"<div style='font-size:0.85rem; color:#8C7A6B; margin-top:6px;'>외 {more_count}개의 기프티콘 만료가 임박했어요!</div>"
 
         st.markdown(f"""
             <div class="home-alert-box">
@@ -320,8 +316,6 @@ elif st.session_state.current_page == "list":
         st.session_state.filter_mode = "date"
 
     today = datetime.date.today()
-    
-    # 원본 인덱스 정보를 함께 보존하기 위해 enumerate 활용
     indexed_gifticons = list(enumerate(st.session_state.gifticons))
 
     if st.session_state.filter_mode == "date":
@@ -387,7 +381,6 @@ elif st.session_state.current_page == "list":
                 highest_notif = matched_notifs[0]
                 st.warning(f"⏰ [{highest_notif}] 알림 기준 범위 내에 있어요! (만료까지 {d_day}일 남음)")
 
-            # 카드별 수정 및 삭제 버튼
             col_edit, col_del = st.columns([1, 1])
             with col_edit:
                 if st.button("✏️ 수정", key=f"edit_btn_{real_idx}"):
@@ -405,7 +398,6 @@ elif st.session_state.current_page == "list":
                     st.success(f"'{item['menu']}' 기프티콘이 삭제되었습니다.")
                     st.rerun()
 
-            # 수정 모드 활성화 영역
             if st.session_state.editing_index == real_idx:
                 with st.expander("📝 정보 수정하기", expanded=True):
                     categories = ["식당", "디저트", "카페", "편의점", "기타"]

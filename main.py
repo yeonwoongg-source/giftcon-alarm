@@ -175,19 +175,15 @@ def save_to_local_storage():
 def set_page(page_name):
     st.session_state.current_page = page_name
 
-# D-Day 구간별 알림 레이블 판별 함수
-def get_alert_label(d_day, notify_options):
-    if d_day < 0:
-        return None
-    elif d_day == 0:
-        return "오늘 만료!"
-    elif 1 <= d_day <= 7 and "일주일 전" in notify_options:
-        return "일주일 전"
-    elif 8 <= d_day <= 20 and "보름 전" in notify_options:
-        return "보름 전"
-    elif 21 <= d_day <= 30 and "한 달 전" in notify_options:
-        return "한 달 전"
-    return None
+def get_notify_days(options):
+    days = []
+    if "한 달 전" in options:
+        days.append(30)
+    if "보름 전" in options:
+        days.append(15)
+    if "일주일 전" in options:
+        days.append(7)
+    return days
 
 # ---------------------------------------------------------
 # 3. 화면별 구현
@@ -198,35 +194,32 @@ if st.session_state.current_page == "start":
     st.markdown("<div class='title-text'>🎁 기프티콘 알리미</div>", unsafe_allow_html=True)
     
     today = datetime.date.today()
-    urgent_items = []
+    notify_days_list = get_notify_days(st.session_state.notify_options)
     
+    urgent_items = []
     for item in st.session_state.gifticons:
         exp_date = datetime.datetime.strptime(item["expiry"], "%Y-%m-%d").date()
         d_day = (exp_date - today).days
         
-        label = get_alert_label(d_day, st.session_state.notify_options)
-        if label:
-            urgent_items.append((item, d_day, label))
+        matched = []
+        if 30 in notify_days_list and d_day <= 30:
+            matched.append("한 달 전")
+        if 15 in notify_days_list and d_day <= 15:
+            matched.append("보름 전")
+        if 7 in notify_days_list and d_day <= 7:
+            matched.append("일주일 전")
+            
+        if len(matched) > 0 and d_day >= 0:
+            urgent_items.append((item, d_day))
 
-    # 시작 화면 알림창 (만료 임박 기프티콘이 있을 때 표시)
+    # 시작 화면 알림창
     if urgent_items:
         urgent_items.sort(key=lambda x: x[1])
         
         items_html = ""
-        for item, d_day, label in urgent_items[:3]:  # 상위 3개까지 노출
-            if d_day == 0:
-                d_day_str = "오늘 만료!"
-                label_html = ""  # 오늘 만료인 경우 중복 문구 생략
-            else:
-                d_day_str = f"D-{d_day}"
-                label_html = f" <span style='font-size:0.85rem; color:#8C7A6B;'>({label})</span>"
-
-            items_html += f"""
-                <div class='home-alert-item'>
-                    • <b>[{item['category']}] {item['menu']}</b> — 
-                    <span style='color:#FF5252; font-weight:bold;'>{d_day_str}</span>{label_html}
-                </div>
-            """
+        for item, d_day in urgent_items[:3]:
+            d_day_str = "오늘 만료!" if d_day == 0 else f"D-{d_day}"
+            items_html += f"<div class='home-alert-item'>• <b>[{item['category']}] {item['menu']}</b> — <span style='color:#FF5252; font-weight:bold;'>{d_day_str}</span></div>"
         
         more_count = len(urgent_items) - 3
         if more_count > 0:
@@ -336,6 +329,8 @@ elif st.session_state.current_page == "list":
 
     st.write("---")
 
+    notify_days_list = get_notify_days(st.session_state.notify_options)
+
     if not display_list:
         st.info("등록된 기프티콘이 없어요 🎈")
     else:
@@ -351,8 +346,15 @@ elif st.session_state.current_page == "list":
             exp_date = datetime.datetime.strptime(item["expiry"], "%Y-%m-%d").date()
             d_day = (exp_date - today).days
 
-            alert_label = get_alert_label(d_day, st.session_state.notify_options)
-            is_urgent = alert_label is not None
+            matched_notifs = []
+            if 30 in notify_days_list and d_day <= 30:
+                matched_notifs.append("한 달 전")
+            if 15 in notify_days_list and d_day <= 15:
+                matched_notifs.append("보름 전")
+            if 7 in notify_days_list and d_day <= 7:
+                matched_notifs.append("일주일 전")
+
+            is_urgent = len(matched_notifs) > 0
             card_class = "gifticon-card urgent" if is_urgent else "gifticon-card"
 
             if d_day > 0:
@@ -375,11 +377,9 @@ elif st.session_state.current_page == "list":
                 </div>
             """, unsafe_allow_html=True)
 
-            if is_urgent:
-                if d_day == 0:
-                    st.warning("⏰ 오늘 만료되는 기프티콘입니다! 꼭 사용하세요.")
-                else:
-                    st.warning(f"⏰ [{alert_label}] 알림 조건에 해당합니다! (남은 기간: {d_day}일)")
+            if is_urgent and d_day >= 0:
+                highest_notif = matched_notifs[0]
+                st.warning(f"⏰ [{highest_notif}] 알림 기준 범위 내에 있어요! (만료까지 {d_day}일 남음)")
 
     st.write("")
     if st.button("← 돌아가기"):
@@ -395,11 +395,11 @@ elif st.session_state.current_page == "settings":
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        check_month = st.checkbox("한 달 전 (21~30일 남음)", value="한 달 전" in st.session_state.notify_options)
+        check_month = st.checkbox("한 달 전 (30일)", value="한 달 전" in st.session_state.notify_options)
     with col2:
-        check_half = st.checkbox("보름 전 (8~20일 남음)", value="보름 전" in st.session_state.notify_options)
+        check_half = st.checkbox("보름 전 (15일)", value="보름 전" in st.session_state.notify_options)
     with col3:
-        check_week = st.checkbox("일주일 전 (1~7일 남음)", value="일주일 전" in st.session_state.notify_options)
+        check_week = st.checkbox("일주일 전 (7일)", value="일주일 전" in st.session_state.notify_options)
 
     selected_options = []
     if check_month:

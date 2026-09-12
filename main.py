@@ -214,12 +214,17 @@ if st.session_state.current_page == "start":
         
         items_html = ""
         for item, d_day, label in urgent_items[:3]:  # 상위 3개까지 노출
-            d_day_str = "오늘 만료!" if d_day == 0 else f"D-{d_day}"
+            if d_day == 0:
+                d_day_str = "오늘 만료!"
+                label_html = ""  # 오늘 만료인 경우 중복 문구 생략
+            else:
+                d_day_str = f"D-{d_day}"
+                label_html = f" <span style='font-size:0.85rem; color:#8C7A6B;'>({label})</span>"
+
             items_html += f"""
                 <div class='home-alert-item'>
                     • <b>[{item['category']}] {item['menu']}</b> — 
-                    <span style='color:#FF5252; font-weight:bold;'>{d_day_str}</span> 
-                    <span style='font-size:0.85rem; color:#8C7A6B;'>({label})</span>
+                    <span style='color:#FF5252; font-weight:bold;'>{d_day_str}</span>{label_html}
                 </div>
             """
         

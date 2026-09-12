@@ -91,7 +91,7 @@ st.markdown("""
         background-color: #FFFFFF;
         border-radius: 20px;
         padding: 20px;
-        margin-bottom: 16px;
+        margin-bottom: 12px;
         border: 2px solid #F2ECE4;
         box-shadow: 0px 6px 15px rgba(210, 195, 180, 0.12);
         position: relative;
@@ -166,6 +166,9 @@ if 'notify_options' not in st.session_state:
 if 'current_page' not in st.session_state:
     st.session_state.current_page = "start"
 
+if 'editing_index' not in st.session_state:
+    st.session_state.editing_index = None
+
 def save_to_local_storage():
     data_json = json.dumps(st.session_state.gifticons)
     notify_json = json.dumps(st.session_state.notify_options)
@@ -174,6 +177,7 @@ def save_to_local_storage():
 
 def set_page(page_name):
     st.session_state.current_page = page_name
+    st.session_state.editing_index = None
 
 def get_notify_days(options):
     days = []
@@ -316,22 +320,24 @@ elif st.session_state.current_page == "list":
         st.session_state.filter_mode = "date"
 
     today = datetime.date.today()
-    display_list = st.session_state.gifticons.copy()
+    
+    # 원본 인덱스 정보를 함께 보존하기 위해 enumerate 활용
+    indexed_gifticons = list(enumerate(st.session_state.gifticons))
 
     if st.session_state.filter_mode == "date":
-        display_list.sort(key=lambda x: datetime.datetime.strptime(x["expiry"], "%Y-%m-%d").date())
+        indexed_gifticons.sort(key=lambda x: datetime.datetime.strptime(x[1]["expiry"], "%Y-%m-%d").date())
 
     elif st.session_state.filter_mode == "category":
         st.write("")
         st.write("**카테고리 선택**")
         selected_cat = st.radio("카테고리 선택", ["식당", "디저트", "카페", "편의점", "기타"], horizontal=True, label_visibility="collapsed")
-        display_list = [item for item in display_list if item["category"] == selected_cat]
+        indexed_gifticons = [x for x in indexed_gifticons if x[1]["category"] == selected_cat]
 
     st.write("---")
 
     notify_days_list = get_notify_days(st.session_state.notify_options)
 
-    if not display_list:
+    if not indexed_gifticons:
         st.info("등록된 기프티콘이 없어요 🎈")
     else:
         badge_map = {
@@ -342,7 +348,7 @@ elif st.session_state.current_page == "list":
             "기타": "badge-etc"
         }
 
-        for item in display_list:
+        for real_idx, item in indexed_gifticons:
             exp_date = datetime.datetime.strptime(item["expiry"], "%Y-%m-%d").date()
             d_day = (exp_date - today).days
 
@@ -380,6 +386,73 @@ elif st.session_state.current_page == "list":
             if is_urgent and d_day >= 0:
                 highest_notif = matched_notifs[0]
                 st.warning(f"⏰ [{highest_notif}] 알림 기준 범위 내에 있어요! (만료까지 {d_day}일 남음)")
+
+            # 카드별 수정 및 삭제 버튼
+            col_edit, col_del = st.columns([1, 1])
+            with col_edit:
+                if st.button("✏️ 수정", key=f"edit_btn_{real_idx}"):
+                    if st.session_state.editing_index == real_idx:
+                        st.session_state.editing_index = None
+                    else:
+                        st.session_state.editing_index = real_idx
+                    st.rerun()
+
+            with col_del:
+                if st.button("🗑️ 삭제", key=f"del_btn_{real_idx}"):
+                    st.session_state.gifticons.pop(real_idx)
+                    save_to_local_storage()
+                    st.session_state.editing_index = None
+                    st.success(f"'{item['menu']}' 기프티콘이 삭제되었습니다.")
+                    st.rerun()
+
+            # 수정 모드 활성화 영역
+            if st.session_state.editing_index == real_idx:
+                with st.expander("📝 정보 수정하기", expanded=True):
+                    categories = ["식당", "디저트", "카페", "편의점", "기타"]
+                    cat_idx = categories.index(item["category"]) if item["category"] in categories else 0
+                    
+                    edit_category = st.radio("종류", categories, index=cat_idx, key=f"edit_cat_{real_idx}", horizontal=True)
+                    edit_menu = st.text_input("메뉴명", value=item["menu"], key=f"edit_menu_{real_idx}")
+                    edit_price = st.text_input("가격", value=str(item["price"]), key=f"edit_price_{real_idx}")
+
+                    curr_date = datetime.datetime.strptime(item["expiry"], "%Y-%m-%d").date()
+                    col_ey, col_em, col_ed = st.columns(3)
+                    with col_ey:
+                        edit_y = st.selectbox("연도", list(range(today.year, today.year + 6)), index=max(0, curr_date.year - today.year), key=f"ey_{real_idx}")
+                    with col_em:
+                        edit_m = st.selectbox("월", list(range(1, 13)), index=curr_date.month - 1, key=f"em_{real_idx}")
+                    with col_ed:
+                        edit_d = st.selectbox("일", list(range(1, 32)), index=min(curr_date.day - 1, 30), key=f"ed_{real_idx}")
+
+                    col_save_edit, col_cancel_edit = st.columns(2)
+                    with col_save_edit:
+                        if st.button("💾 수정 완료", key=f"save_edit_{real_idx}"):
+                            if not edit_menu.strip():
+                                st.error("메뉴 이름을 입력해주세요.")
+                            elif not str(edit_price).isdigit():
+                                st.error("가격은 숫자로만 입력해주세요.")
+                            else:
+                                try:
+                                    new_exp = datetime.date(edit_y, edit_m, edit_d).strftime("%Y-%m-%d")
+                                    st.session_state.gifticons[real_idx] = {
+                                        "category": edit_category,
+                                        "menu": edit_menu,
+                                        "price": int(edit_price),
+                                        "expiry": new_exp
+                                    }
+                                    save_to_local_storage()
+                                    st.session_state.editing_index = None
+                                    st.success("수정되었습니다!")
+                                    st.rerun()
+                                except ValueError:
+                                    st.error("유효하지 않은 날짜입니다.")
+
+                    with col_cancel_edit:
+                        if st.button("❌ 취소", key=f"cancel_edit_{real_idx}"):
+                            st.session_state.editing_index = None
+                            st.rerun()
+
+            st.write("")
 
     st.write("")
     if st.button("← 돌아가기"):

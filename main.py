@@ -179,15 +179,18 @@ def set_page(page_name):
     st.session_state.current_page = page_name
     st.session_state.editing_index = None
 
-def get_notify_days(options):
-    days = []
-    if "한 달 전" in options:
-        days.append(30)
-    if "보름 전" in options:
-        days.append(15)
-    if "일주일 전" in options:
-        days.append(7)
-    return days
+def get_alert_label(d_day, user_options):
+    """
+    남은 일수(d_day)와 유저가 동의한 알림 옵션(user_options)에 맞춰
+    해당하는 라벨("일주일 전", "보름 전", "한 달 전")을 반환합니다.
+    """
+    if 0 <= d_day <= 7 and "일주일 전" in user_options:
+        return "일주일 전"
+    elif 8 <= d_day <= 15 and "보름 전" in user_options:
+        return "보름 전"
+    elif 16 <= d_day <= 30 and "한 달 전" in user_options:
+        return "한 달 전"
+    return None
 
 # ---------------------------------------------------------
 # 3. 화면별 구현
@@ -198,30 +201,22 @@ if st.session_state.current_page == "start":
     st.markdown("<div class='title-text'>🎁 기프티콘 알리미</div>", unsafe_allow_html=True)
     
     today = datetime.date.today()
-    notify_days_list = get_notify_days(st.session_state.notify_options)
     
     urgent_items = []
     for item in st.session_state.gifticons:
         exp_date = datetime.datetime.strptime(item["expiry"], "%Y-%m-%d").date()
         d_day = (exp_date - today).days
         
-        matched = []
-        if 30 in notify_days_list and d_day <= 30:
-            matched.append("한 달 전")
-        if 15 in notify_days_list and d_day <= 15:
-            matched.append("보름 전")
-        if 7 in notify_days_list and d_day <= 7:
-            matched.append("일주일 전")
-            
-        if len(matched) > 0 and d_day >= 0:
-            urgent_items.append((item, d_day))
+        label = get_alert_label(d_day, st.session_state.notify_options)
+        if label is not None:
+            urgent_items.append((item, d_day, label))
 
-    # 시작 화면 알림창 (알림 대상 항목 전체 출력)
+    # 시작 화면 알림창
     if urgent_items:
         urgent_items.sort(key=lambda x: x[1])
         
         items_html = ""
-        for item, d_day in urgent_items:
+        for item, d_day, label in urgent_items:
             d_day_str = "오늘 만료!" if d_day == 0 else f"D-{d_day}"
             items_html += f"<div class='home-alert-item'>• <b>[{item['category']}] {item['menu']}</b> — <span style='color:#FF5252; font-weight:bold;'>{d_day_str}</span></div>"
 
@@ -329,8 +324,6 @@ elif st.session_state.current_page == "list":
 
     st.write("---")
 
-    notify_days_list = get_notify_days(st.session_state.notify_options)
-
     if not indexed_gifticons:
         st.info("등록된 기프티콘이 없어요 🎈")
     else:
@@ -346,15 +339,8 @@ elif st.session_state.current_page == "list":
             exp_date = datetime.datetime.strptime(item["expiry"], "%Y-%m-%d").date()
             d_day = (exp_date - today).days
 
-            matched_notifs = []
-            if 30 in notify_days_list and d_day <= 30:
-                matched_notifs.append("한 달 전")
-            if 15 in notify_days_list and d_day <= 15:
-                matched_notifs.append("보름 전")
-            if 7 in notify_days_list and d_day <= 7:
-                matched_notifs.append("일주일 전")
-
-            is_urgent = len(matched_notifs) > 0
+            alert_label = get_alert_label(d_day, st.session_state.notify_options)
+            is_urgent = alert_label is not None
             card_class = "gifticon-card urgent" if is_urgent else "gifticon-card"
 
             if d_day > 0:
@@ -377,9 +363,8 @@ elif st.session_state.current_page == "list":
                 </div>
             """, unsafe_allow_html=True)
 
-            if is_urgent and d_day >= 0:
-                highest_notif = matched_notifs[0]
-                st.warning(f"⏰ [{highest_notif}] 알림 기준 범위 내에 있어요! (만료까지 {d_day}일 남음)")
+            if is_urgent:
+                st.warning(f"⏰ [{alert_label}] 알림 기준 범위 내에 있어요! (만료까지 {d_day}일 남음)")
 
             col_edit, col_del = st.columns([1, 1])
             with col_edit:
@@ -460,11 +445,11 @@ elif st.session_state.current_page == "settings":
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        check_month = st.checkbox("한 달 전 (30일)", value="한 달 전" in st.session_state.notify_options)
+        check_month = st.checkbox("한 달 전 (16일~30일 전)", value="한 달 전" in st.session_state.notify_options)
     with col2:
-        check_half = st.checkbox("보름 전 (15일)", value="보름 전" in st.session_state.notify_options)
+        check_half = st.checkbox("보름 전 (8일~15일 전)", value="보름 전" in st.session_state.notify_options)
     with col3:
-        check_week = st.checkbox("일주일 전 (7일)", value="일주일 전" in st.session_state.notify_options)
+        check_week = st.checkbox("일주일 전 (0일~7일 전)", value="일주일 전" in st.session_state.notify_options)
 
     selected_options = []
     if check_month:

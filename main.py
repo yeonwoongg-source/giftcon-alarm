@@ -2,7 +2,6 @@ streamlit
 google-genai
 
 gifticon-notifier/
-│
 ├── .streamlit/
 │   └── config.toml      # 남색 배경 theme 설정
 ├── app.py               # Streamlit 메인 앱 코드
